@@ -410,7 +410,7 @@ class RestServer
 			}
 			$options = 0;
 			if ($this->mode == 'debug') {
-				$options = JSON_PRETTY_PRINT;
+				//$options = JSON_PRETTY_PRINT; // PHP 5.4.0
 			}
 			echo json_encode($data, $options);
 		}
