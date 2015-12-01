@@ -1,9 +1,9 @@
 {
-    "name": "jacwright/restserver",
+    "name": "lebr1/restserver",
     "type": "library",
     "description": "php rest server for very light-weight REST APIs",
     "keywords": ["php", "rest", "rest-server", "light-weight", "http", "json", "mit"],
-    "homepage": "https://github.com/jacwright/RestServer",
+    "homepage": "https://github.com/lebr1/RestServer",
     "license": "MIT",
     "authors": [
         {
