@@ -50,7 +50,9 @@ class RestServer
 	public $realm;
 	public $mode;
 	public $root;
-	
+	public $rootPath;
+	public $jsonAssoc = false;
+
 	protected $map = array();
 	protected $errorClasses = array();
 	protected $cached;
@@ -65,7 +67,7 @@ class RestServer
 		$this->mode = $mode;
 		$this->realm = $realm;
 		// Set the root
-		//$dir = dirname(str_replace($_SERVER['DOCUMENT_ROOT'], '', $_SERVER['SCRIPT_FILENAME']));
+//		$dir = str_replace('\\', '/', dirname(str_replace($_SERVER['DOCUMENT_ROOT'], '', $_SERVER['SCRIPT_FILENAME'])));
 		$dir = $_SERVER["SCRIPT_NAME"];
 		if ($dir == '.') {
 			$dir = '/';
@@ -109,7 +111,7 @@ class RestServer
 		$this->method = $this->getMethod();
 		$this->format = $this->getFormat();
 		
-		if ($this->method == 'PUT' || $this->method == 'POST') {
+		if ($this->method == 'PUT' || $this->method == 'POST' || $this->method == 'PATCH') {
 			$this->data = $this->getData();
 		}
 		
@@ -150,6 +152,14 @@ class RestServer
 		} else {
 			$this->handleError(404);
 		}
+	}
+	public function setRootPath($path)
+	{
+		$this->rootPath = '/'.trim($path, '/').'/';
+	}
+	public function setJsonAssoc($value)
+	{
+		$this->jsonAssoc = ($value === true);
 	}
 
 	public function addClass($class, $basePath = '')
@@ -199,11 +209,14 @@ class RestServer
 				}
 			}
 		}
-		
-		$message = $this->codes[$statusCode] . ($errorMessage && $this->mode == 'debug' ? ': ' . $errorMessage : '');
-		
+
+		if (!$errorMessage)
+		{
+			$errorMessage = $this->codes[$statusCode];
+		}
+
 		$this->setStatus($statusCode);
-		$this->sendData(array('error' => array('code' => $statusCode, 'message' => $message)));
+		$this->sendData(array('error' => array('code' => $statusCode, 'message' => $errorMessage)));
 	}
 	
 	protected function loadCache()
@@ -301,7 +314,7 @@ class RestServer
 		foreach ($methods as $method) {
 			$doc = $method->getDocComment();
 			$noAuth = strpos($doc, '@noAuth') !== false;
-			if (preg_match_all('/@url[ \t]+(GET|POST|PUT|DELETE|HEAD|OPTIONS)[ \t]+\/?(\S*)/s', $doc, $matches, PREG_SET_ORDER)) {
+			if (preg_match_all('/@url[ \t]+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)[ \t]+\/?(\S*)/s', $doc, $matches, PREG_SET_ORDER)) {
 				
 				$params = $method->getParameters();
 				
@@ -333,6 +346,8 @@ class RestServer
 		if ($this->root) $path = preg_replace('/^' . preg_quote($this->root, '/') . '/', '', $path);
 		// remove trailing format definition, like /controller/action.json -> /controller/action
 		$path = preg_replace('/\.(\w+)$/i', '', $path);
+		// remove root path from path, like /root/path/api -> /api
+		if ($this->rootPath) $path = str_replace($this->rootPath, '', $path);
 		return $path;
 	}
 	
@@ -344,6 +359,8 @@ class RestServer
 			$method = 'PUT';
 		} elseif ($method == 'POST' && strtoupper($override) == 'DELETE') {
 			$method = 'DELETE';
+		} elseif ($method == 'POST' && strtoupper($override) == 'PATCH') {
+			$method = 'PATCH';
 		}
 		return $method;
 	}
@@ -351,7 +368,10 @@ class RestServer
 	public function getFormat()
 	{
 		$format = RestFormat::PLAIN;
-		$accept_mod = preg_replace('/\s+/i', '', $_SERVER['HTTP_ACCEPT']); // ensures that exploding the HTTP_ACCEPT string does not get confused by whitespaces
+		$accept_mod = null;
+		if(isset($_SERVER["HTTP_ACCEPT"])) {
+			$accept_mod = preg_replace('/\s+/i', '', $_SERVER['HTTP_ACCEPT']); // ensures that exploding the HTTP_ACCEPT string does not get confused by whitespaces
+		}
 		$accept = explode(',', $accept_mod);
 		$override = '';
 
@@ -363,7 +383,7 @@ class RestServer
 		}
 		
 		// Check for trailing dot-format syntax like /controller/action.format -> action.json
-		if(preg_match('/\.(\w+)$/i', $_SERVER['REQUEST_URI'], $matches)) {
+		if(preg_match('/\.(\w+)$/i', strtok($_SERVER['REQUEST_URI'],'?'), $matches)) {
 			$override = $matches[1];
 		}
 
@@ -380,7 +400,7 @@ class RestServer
 	public function getData()
 	{
 		$data = file_get_contents('php://input');
-		$data = json_decode($data);
+		$data = json_decode($data, $this->jsonAssoc);
 
 		return $data;
 	}
@@ -409,8 +429,11 @@ class RestServer
 				}
 			}
 			$options = 0;
-			if ($this->mode == 'debug') {
-				//$options = JSON_PRETTY_PRINT; // PHP 5.4.0
+			if (version_compare(phpversion(), '5.4.0', '<')) {
+				if ($this->mode == 'debug') {
+					$options = JSON_PRETTY_PRINT; // PHP 5.4.0
+				}
+				$options = $options | JSON_UNESCAPED_UNICODE;
 			}
 			echo json_encode($data, $options);
 		}
